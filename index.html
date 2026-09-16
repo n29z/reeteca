@@ -130,6 +130,13 @@ h1,h2,h3{font-family:"Archivo",system-ui,sans-serif; margin:0; text-wrap:balance
   position:absolute; top:0; left:16px; right:16px; height:1px; background:
     repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px);
 }
+.thumb{
+  margin:-14px -14px 0; border-radius:12px 12px 0 0; overflow:hidden;
+  aspect-ratio: 9/13; background:var(--paper-2);
+  display:flex; align-items:center; justify-content:center; position:relative;
+}
+.thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+.thumb.placeholder{ color:var(--ink-soft); font-size:28px; }
 .card-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
 .chip{
   font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
@@ -236,6 +243,11 @@ footer.note{
         <label for="f-title">Título</label>
         <input id="f-title" type="text" placeholder="Ej: Transición con luz">
         <span class="field-error" id="err-title" hidden>Ponele un título.</span>
+      </div>
+      <div class="field">
+        <label for="f-thumb">Portada (opcional — una captura del reel)</label>
+        <input id="f-thumb" type="file" accept="image/*">
+        <span class="field-error" id="err-thumb" hidden></span>
       </div>
       <div class="field">
         <label for="f-section">Sección</label>
@@ -416,6 +428,29 @@ footer.note{
   }
 
   var pendingDeleteId = null;
+  var pendingThumb = null;
+
+  function readAndCompressImage(file, callback){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var img = new Image();
+      img.onload = function(){
+        var maxW = 320;
+        var scale = Math.min(1, maxW / img.width);
+        var w = Math.max(1, Math.round(img.width * scale));
+        var h = Math.max(1, Math.round(img.height * scale));
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        callback(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = function(){ callback(null); };
+      img.src = e.target.result;
+    };
+    reader.onerror = function(){ callback(null); };
+    reader.readAsDataURL(file);
+  }
 
   function renderGrid(){
     var wrap = document.getElementById('gridWrap');
@@ -440,7 +475,11 @@ footer.note{
         actions = '<a class="open-link" href="'+escapeHtml(it.url)+'" target="_blank" rel="noopener noreferrer">Ver reel ↗</a>'+
           '<button class="del-btn" data-del="'+it.id+'" type="button" aria-label="Borrar">✕</button>';
       }
+      var thumbHtml = it.thumbnail
+        ? '<div class="thumb"><img src="'+it.thumbnail+'" alt="" loading="lazy"></div>'
+        : '<div class="thumb placeholder">🎬</div>';
       html += '<article class="card">'+
+        thumbHtml+
         '<div class="frameline"></div>'+
         '<div class="card-top"><span class="chip">'+escapeHtml(sectionName(it.sectionId))+'</span>'+
         (it.example ? '<span class="example-badge">EJEMPLO</span>' : '')+
@@ -498,6 +537,8 @@ footer.note{
     document.getElementById('err-url').hidden = true;
     document.getElementById('err-title').hidden = true;
     document.getElementById('err-newsection').hidden = true;
+    document.getElementById('err-thumb').hidden = true;
+    pendingThumb = null;
     renderSectionSelect();
     document.getElementById('addOverlay').hidden = false;
     document.getElementById('f-url').focus();
@@ -547,6 +588,26 @@ footer.note{
     document.getElementById('f-section').addEventListener('change', function(e){
       document.getElementById('newSectionField').hidden = (e.target.value !== '__new__');
     });
+    document.getElementById('f-thumb').addEventListener('change', function(e){
+      var file = e.target.files && e.target.files[0];
+      var err = document.getElementById('err-thumb');
+      err.hidden = true;
+      if(!file) { pendingThumb = null; return; }
+      if(file.size > 8 * 1024 * 1024){
+        err.textContent = 'La imagen es muy pesada, elegí una más chica.';
+        err.hidden = false;
+        e.target.value = '';
+        pendingThumb = null;
+        return;
+      }
+      readAndCompressImage(file, function(dataUrl){
+        pendingThumb = dataUrl;
+        if(!dataUrl){
+          err.textContent = 'No se pudo leer esa imagen, probá con otra.';
+          err.hidden = false;
+        }
+      });
+    });
     document.getElementById('addForm').addEventListener('submit', function(e){
       e.preventDefault();
       var urlEl = document.getElementById('f-url');
@@ -577,9 +638,11 @@ footer.note{
         sectionId = uid();
         sections = sections.concat([{id:sectionId, name:newName}]);
       }
-      var items = state.items.concat([{
+      var newItem = {
         id: uid(), sectionId: sectionId, url: url, title: title, note: note, example:false, addedAt: Date.now()
-      }]);
+      };
+      if(pendingThumb){ newItem.thumbnail = pendingThumb; }
+      var items = state.items.concat([newItem]);
       activeSection = sectionId;
       closeModal();
       persist(Object.assign({}, state, {sections:sections, items:items}));
