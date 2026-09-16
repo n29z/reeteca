@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reelteca</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+[hidden]{display:none!important;}
+:root{
+  --paper:#F1EFE9;
+  --paper-2:#E7E3D9;
+  --ink:#211D18;
+  --ink-soft:#5C574C;
+  --line:#C9C2B2;
+  --accent:#E23E6B;
+  --accent-ink:#3A0E1D;
+  --teal:#12807D;
+  --card:#FBFAF6;
+  --shadow: 0 1px 0 rgba(33,29,24,.06);
+  --focus: #1D6B68;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --paper:#1B1917;
+    --paper-2:#242220;
+    --ink:#F1EEE6;
+    --ink-soft:#B8B1A2;
+    --line:#3C3833;
+    --accent:#FF6B93;
+    --accent-ink:#FFE1EA;
+    --teal:#4FCFC9;
+    --card:#242220;
+    --shadow: 0 1px 0 rgba(0,0,0,.4);
+    --focus: #4FCFC9;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#1B1917;
+  --paper-2:#242220;
+  --ink:#F1EEE6;
+  --ink-soft:#B8B1A2;
+  --line:#3C3833;
+  --accent:#FF6B93;
+  --accent-ink:#FFE1EA;
+  --teal:#4FCFC9;
+  --card:#242220;
+  --shadow: 0 1px 0 rgba(0,0,0,.4);
+  --focus: #4FCFC9;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Work Sans",system-ui,sans-serif;
+  padding-inline:16px;
+  padding-block: max(20px, env(safe-area-inset-top,0px)) max(28px, env(safe-area-inset-bottom,0px));
+}
+h1,h2,h3{font-family:"Archivo",system-ui,sans-serif; margin:0; text-wrap:balance;}
+.wrap{max-width:1040px; margin:0 auto;}
+.slate{
+  background:var(--ink);
+  color:var(--paper);
+  border-radius:14px;
+  padding:22px 22px 18px;
+  position:relative;
+  overflow:hidden;
+  margin-bottom:22px;
+}
+.slate .sprockets{
+  position:absolute; left:0; right:0; top:0; height:10px;
+  background-image: repeating-linear-gradient(90deg, var(--paper) 0 10px, transparent 10px 22px);
+  opacity:.18;
+}
+.slate-top{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; padding-top:8px;}
+.slate h1{font-size:clamp(28px,5vw,40px); font-weight:900; letter-spacing:-0.02em;}
+.slate p{margin:6px 0 0; color:var(--paper-2); opacity:.75; font-size:14px; max-width:46ch;}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--accent); font-weight:600;
+}
+.toolbar{display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;}
+.search{
+  flex:1; min-width:180px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:10px;
+  padding:10px 12px;
+  color:var(--paper);
+  font-family:"Work Sans",sans-serif;
+  font-size:14px;
+}
+.search::placeholder{color:rgba(241,238,230,.5);}
+.btn{
+  font-family:"Archivo",sans-serif; font-weight:700; font-size:14px;
+  border:none; border-radius:10px; padding:10px 16px; cursor:pointer;
+  background:var(--accent); color:#fff;
+  transition:transform .12s ease;
+}
+.btn:hover{transform:translateY(-1px);}
+.btn:active{transform:translateY(0);}
+.btn.secondary{background:transparent; color:var(--paper); border:1px solid rgba(255,255,255,.3);}
+.btn:focus-visible, .search:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, .tab:focus-visible{
+  outline:2px solid var(--focus); outline-offset:2px;
+}
+.tabs{
+  display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; margin-bottom:18px;
+  scrollbar-width:thin;
+}
+.tab{
+  flex:0 0 auto;
+  font-family:"IBM Plex Mono",monospace; font-size:12.5px; font-weight:600;
+  padding:8px 13px; border-radius:999px; border:1px solid var(--line);
+  background:var(--card); color:var(--ink-soft); cursor:pointer; white-space:nowrap;
+}
+.tab[aria-selected="true"]{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.tab .count{opacity:.6; margin-left:5px;}
+.tab.add-tab{ background:transparent; border-style:dashed; color:var(--teal); }
+
+.grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:14px;
+}
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:12px;
+  padding:14px; position:relative; box-shadow:var(--shadow);
+  display:flex; flex-direction:column; gap:8px;
+}
+.card .frameline{
+  position:absolute; top:0; left:16px; right:16px; height:1px; background:
+    repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px);
+}
+.card-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+.chip{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--teal); font-weight:600;
+}
+.card h3{font-size:15.5px; font-weight:700; line-height:1.3;}
+.card .note{font-size:13px; color:var(--ink-soft); line-height:1.45; flex:1;}
+.card-actions{display:flex; justify-content:space-between; align-items:center; margin-top:2px;}
+.open-link{
+  font-family:"Archivo",sans-serif; font-weight:700; font-size:13px; color:var(--accent);
+  text-decoration:none; display:inline-flex; align-items:center; gap:5px;
+}
+.open-link:hover{text-decoration:underline;}
+.del-btn{
+  background:none; border:none; color:var(--ink-soft); cursor:pointer; font-size:16px; line-height:1;
+  padding:4px; border-radius:6px;
+}
+.del-btn:hover{color:var(--accent); background:var(--paper-2);}
+.confirm-text{font-size:13px; color:var(--ink-soft); font-weight:600;}
+.confirm-btns{display:flex; gap:4px;}
+.confirm-btns .del-btn{
+  font-family:"Archivo",sans-serif; font-size:12.5px; font-weight:700; padding:4px 9px;
+  border:1px solid var(--line);
+}
+.confirm-btns .confirm-yes{color:#fff; background:var(--accent); border-color:var(--accent);}
+.confirm-btns .confirm-yes:hover{background:var(--accent); opacity:.9; color:#fff;}
+.example-badge{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.08em;
+  color:var(--ink-soft); border:1px solid var(--line); border-radius:999px; padding:2px 7px;
+}
+.empty{
+  text-align:center; padding:48px 16px; color:var(--ink-soft);
+}
+.empty .btn{margin-top:14px;}
+
+.overlay[hidden]{display:none;}
+.overlay{
+  position:fixed; inset:0; background:rgba(20,17,14,.55); display:flex; align-items:center; justify-content:center;
+  padding:16px; z-index:10;
+}
+.modal{
+  background:var(--paper); border-radius:14px; padding:22px; width:100%; max-width:420px;
+  border:1px solid var(--line); max-height:90vh; overflow-y:auto;
+}
+.modal h2{font-size:19px; margin-bottom:14px;}
+.field{margin-bottom:13px; display:flex; flex-direction:column; gap:5px;}
+.field label{font-size:12.5px; font-weight:600; color:var(--ink-soft);}
+.field input, .field select, .field textarea{
+  font-family:"Work Sans",sans-serif; font-size:14px; padding:9px 10px;
+  border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink);
+}
+.field textarea{resize:vertical; min-height:56px;}
+.field-error{color:var(--accent); font-size:12px; font-weight:600;}
+.modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:6px;}
+.btn.ghost{background:transparent; color:var(--ink-soft); border:1px solid var(--line);}
+.newsection-row{display:flex; gap:8px;}
+.newsection-row input{flex:1;}
+
+footer.note{
+  text-align:center; color:var(--ink-soft); font-size:12px; margin-top:26px; font-family:"IBM Plex Mono",monospace;
+}
+
+@media (max-width:480px){
+  .slate{padding:18px 16px 16px;}
+  .grid{grid-template-columns:1fr 1fr;}
+}
+@media (max-width:340px){
+  .grid{grid-template-columns:1fr;}
+}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="slate">
+    <div class="sprockets"></div>
+    <div class="slate-top">
+      <div>
+        <div class="eyebrow">Tu archivo de referencias</div>
+        <h1>Reelteca</h1>
+        <p>Todos los reels que te sirven para diseño, edición y contenido, ordenados por tema.</p>
+      </div>
+      <button class="btn" id="btnAdd" type="button">+ Agregar reel</button>
+    </div>
+    <div class="toolbar">
+      <input class="search" id="search" type="search" placeholder="Buscar por título, nota o sección…" aria-label="Buscar">
+    </div>
+  </div>
+
+  <nav class="tabs" id="tabs" aria-label="Secciones"></nav>
+  <div id="gridWrap"></div>
+
+  <footer class="note" id="syncNote" hidden></footer>
+</div>
+
+<div class="overlay" id="addOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+    <h2 id="addTitle">Agregar reel</h2>
+    <form id="addForm">
+      <div class="field">
+        <label for="f-url">Link del reel (Instagram u otro)</label>
+        <input id="f-url" type="text" inputmode="url" placeholder="https://www.instagram.com/reel/...">
+        <span class="field-error" id="err-url" hidden>Pegá el link del reel.</span>
+      </div>
+      <div class="field">
+        <label for="f-title">Título</label>
+        <input id="f-title" type="text" placeholder="Ej: Transición con luz">
+        <span class="field-error" id="err-title" hidden>Ponele un título.</span>
+      </div>
+      <div class="field">
+        <label for="f-section">Sección</label>
+        <select id="f-section"></select>
+      </div>
+      <div class="field" id="newSectionField" hidden>
+        <label for="f-newsection">Nombre de la nueva sección</label>
+        <input id="f-newsection" type="text" placeholder="Ej: Color grading">
+        <span class="field-error" id="err-newsection" hidden>Ponele un nombre a la sección.</span>
+      </div>
+      <div class="field">
+        <label for="f-note">Nota (opcional)</label>
+        <textarea id="f-note" placeholder="Por qué te sirve, qué técnica usa..."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btnCancel">Cancelar</button>
+        <button type="submit" class="btn">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="sectionOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sectionTitle">
+    <h2 id="sectionTitle">Nueva sección</h2>
+    <form id="sectionForm">
+      <div class="field">
+        <label for="f-sectiononly">Nombre de la sección</label>
+        <input id="f-sectiononly" type="text" placeholder="Ej: Color grading">
+        <span class="field-error" id="err-sectiononly" hidden>Ponele un nombre a la sección.</span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btnCancelSection">Cancelar</button>
+        <button type="submit" class="btn">Crear</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  // =======================================================================
+  // PASO 1: Pegá acá la configuración de TU proyecto Firebase.
+  // La sacás desde: Configuración del proyecto (ícono de tuerca) > General >
+  // "Tus apps" > ícono </> (Web) > "Config" o "SDK setup and configuration".
+  // =======================================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyDLOyvx2Mw8Sducmla80uUb5Ry9KDmVvN4",
+    authDomain: "reels-instagram-c0b55.firebaseapp.com",
+    projectId: "reels-instagram-c0b55",
+    storageBucket: "reels-instagram-c0b55.firebasestorage.app",
+    messagingSenderId: "644414954771",
+    appId: "1:644414954771:web:250d1e03c482ebde72cdc6",
+    measurementId: "G-NLQKG5GHPF"
+  };
+
+  // =======================================================================
+  // PASO 2: en la consola de Firebase, entrá a "Firestore Database" y creá
+  // la base (modo producción o prueba, da igual). Después andá a la pestaña
+  // "Reglas" y pegá esto para que la página pueda leer y escribir
+  // (es una herramienta personal, sin login, así que no hay control de
+  // usuarios — cualquiera con el link y esta config podría editarla):
+  //
+  //   rules_version = '2';
+  //   service cloud.firestore {
+  //     match /databases/{database}/documents {
+  //       match /reelteca/{doc} {
+  //         allow read, write: if true;
+  //       }
+  //     }
+  //   }
+  // =======================================================================
+
+  var app = firebase.initializeApp(firebaseConfig);
+  var db = firebase.firestore();
+  var docRef = db.collection('reelteca').doc('data');
+
+  function defaultState(){
+    return {
+      sections: [
+        {id:"contenido", name:"Creación de contenido"},
+        {id:"edicion", name:"Edición de video"},
+        {id:"tips", name:"Tips de diseño"},
+        {id:"tutoriales", name:"Tutoriales"},
+        {id:"tipografia", name:"Tipografía"}
+      ],
+      items: [
+        {id:"ex1", sectionId:"edicion", url:"https://www.instagram.com/reels/", title:"Corte a ritmo de música (ejemplo)", note:"Técnica de corte seco en cada golpe de batería, útil para reels de producto.", example:true, addedAt:0},
+        {id:"ex2", sectionId:"tipografia", url:"https://www.instagram.com/reels/", title:"Pairing serif + sans (ejemplo)", note:"Cómo combinar una tipografía editorial con una grotesca para jerarquía.", example:true, addedAt:0}
+      ]
+    };
+  }
+
+  var state = { sections: [], items: [] };
+  var activeSection = "__all__";
+  var query = "";
+  var ready = false;
+  var applyingRemote = false;
+
+  function showSync(msg, isError){
+    var el = document.getElementById('syncNote');
+    el.textContent = msg;
+    el.style.color = isError ? 'var(--accent)' : '';
+    el.hidden = false;
+  }
+  function hideSync(){
+    document.getElementById('syncNote').hidden = true;
+  }
+
+  docRef.onSnapshot(function(snap){
+    applyingRemote = true;
+    if(snap.exists){
+      state = snap.data();
+    } else {
+      state = defaultState();
+      docRef.set(state).catch(function(e){ showSync('No se pudo crear el documento inicial en Firebase: '+e.message, true); });
+    }
+    ready = true;
+    hideSync();
+    renderAll();
+    applyingRemote = false;
+  }, function(err){
+    showSync('No se pudo conectar a Firebase. Revisá la configuración (firebaseConfig) y las reglas de Firestore. Detalle: '+err.message, true);
+  });
+
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  function sectionName(id){
+    var s = state.sections.find(function(x){return x.id===id;});
+    return s ? s.name : "Sin sección";
+  }
+
+  function filteredItems(){
+    var q = query.trim().toLowerCase();
+    return state.items.filter(function(it){
+      if(activeSection !== "__all__" && it.sectionId !== activeSection) return false;
+      if(!q) return true;
+      var hay = (it.title+" "+(it.note||"")+" "+sectionName(it.sectionId)).toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
+  }
+
+  function renderTabs(){
+    var tabs = document.getElementById('tabs');
+    var all = state.items.length;
+    var html = '<button class="tab" role="tab" aria-selected="'+(activeSection==="__all__")+'" data-section="__all__">Todos <span class="count">'+all+'</span></button>';
+    state.sections.forEach(function(s){
+      var count = state.items.filter(function(it){return it.sectionId===s.id;}).length;
+      html += '<button class="tab" role="tab" aria-selected="'+(activeSection===s.id)+'" data-section="'+s.id+'">'+
+        escapeHtml(s.name)+' <span class="count">'+count+'</span></button>';
+    });
+    html += '<button class="tab add-tab" id="tabAddSection" type="button">+ Sección</button>';
+    tabs.innerHTML = html;
+    tabs.querySelectorAll('.tab[data-section]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        activeSection = btn.getAttribute('data-section');
+        renderAll();
+      });
+    });
+    var addSectionBtn = document.getElementById('tabAddSection');
+    if(addSectionBtn){ addSectionBtn.addEventListener('click', openSectionModal); }
+  }
+
+  function openSectionModal(){
+    document.getElementById('sectionForm').reset();
+    document.getElementById('err-sectiononly').hidden = true;
+    document.getElementById('sectionOverlay').hidden = false;
+    document.getElementById('f-sectiononly').focus();
+  }
+  function closeSectionModal(){
+    document.getElementById('sectionOverlay').hidden = true;
+  }
+
+  var pendingDeleteId = null;
+
+  function renderGrid(){
+    var wrap = document.getElementById('gridWrap');
+    var items = filteredItems();
+    if(items.length === 0){
+      wrap.innerHTML = '<div class="empty"><p>'+(ready ? 'No hay reels acá todavía.' : 'Conectando con Firebase…')+'</p>'+
+        (ready ? '<button class="btn" id="emptyAdd" type="button">+ Agregar el primero</button>' : '')+'</div>';
+      var eb = document.getElementById('emptyAdd');
+      if(eb) eb.addEventListener('click', openModal);
+      return;
+    }
+    var html = '<div class="grid">';
+    items.slice().reverse().forEach(function(it){
+      var actions;
+      if(pendingDeleteId === it.id){
+        actions = '<span class="confirm-text">¿Borrar?</span>'+
+          '<span class="confirm-btns">'+
+          '<button class="del-btn confirm-yes" data-confirmdel="'+it.id+'" type="button">Sí</button>'+
+          '<button class="del-btn" data-canceldel="'+it.id+'" type="button">No</button>'+
+          '</span>';
+      } else {
+        actions = '<a class="open-link" href="'+escapeHtml(it.url)+'" target="_blank" rel="noopener noreferrer">Ver reel ↗</a>'+
+          '<button class="del-btn" data-del="'+it.id+'" type="button" aria-label="Borrar">✕</button>';
+      }
+      html += '<article class="card">'+
+        '<div class="frameline"></div>'+
+        '<div class="card-top"><span class="chip">'+escapeHtml(sectionName(it.sectionId))+'</span>'+
+        (it.example ? '<span class="example-badge">EJEMPLO</span>' : '')+
+        '</div>'+
+        '<h3>'+escapeHtml(it.title)+'</h3>'+
+        (it.note ? '<p class="note">'+escapeHtml(it.note)+'</p>' : '<p class="note"></p>')+
+        '<div class="card-actions">'+actions+'</div></article>';
+    });
+    html += '</div>';
+    wrap.innerHTML = html;
+    wrap.querySelectorAll('[data-del]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        pendingDeleteId = btn.getAttribute('data-del');
+        renderGrid();
+      });
+    });
+    wrap.querySelectorAll('[data-canceldel]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        pendingDeleteId = null;
+        renderGrid();
+      });
+    });
+    wrap.querySelectorAll('[data-confirmdel]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-confirmdel');
+        pendingDeleteId = null;
+        var next = Object.assign({}, state, {
+          items: state.items.filter(function(it){return it.id!==id;})
+        });
+        persist(next);
+      });
+    });
+  }
+
+  function renderSectionSelect(){
+    var sel = document.getElementById('f-section');
+    var html = '';
+    state.sections.forEach(function(s){
+      html += '<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>';
+    });
+    html += '<option value="__new__">+ Nueva sección…</option>';
+    sel.innerHTML = html;
+    if(activeSection !== "__all__"){ sel.value = activeSection; }
+  }
+
+  function renderAll(){
+    renderTabs();
+    renderGrid();
+  }
+
+  function openModal(){
+    renderSectionSelect();
+    document.getElementById('newSectionField').hidden = true;
+    document.getElementById('addForm').reset();
+    document.getElementById('err-url').hidden = true;
+    document.getElementById('err-title').hidden = true;
+    document.getElementById('err-newsection').hidden = true;
+    renderSectionSelect();
+    document.getElementById('addOverlay').hidden = false;
+    document.getElementById('f-url').focus();
+  }
+  function closeModal(){
+    document.getElementById('addOverlay').hidden = true;
+  }
+
+  function persist(next){
+    state = next;
+    renderAll();
+    docRef.set(next).catch(function(e){
+      showSync('No se pudo guardar el cambio en Firebase: '+e.message, true);
+    });
+  }
+
+  function init(){
+    document.getElementById('btnAdd').addEventListener('click', openModal);
+    document.getElementById('btnCancel').addEventListener('click', closeModal);
+    document.getElementById('addOverlay').addEventListener('click', function(e){
+      if(e.target.id === 'addOverlay') closeModal();
+    });
+    document.getElementById('btnCancelSection').addEventListener('click', closeSectionModal);
+    document.getElementById('sectionOverlay').addEventListener('click', function(e){
+      if(e.target.id === 'sectionOverlay') closeSectionModal();
+    });
+    document.getElementById('sectionForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      var name = document.getElementById('f-sectiononly').value.trim();
+      if(!name){
+        document.getElementById('err-sectiononly').hidden = false;
+        return;
+      }
+      document.getElementById('err-sectiononly').hidden = true;
+      var id = uid();
+      var next = Object.assign({}, state, {
+        sections: state.sections.concat([{id:id, name:name}])
+      });
+      activeSection = id;
+      closeSectionModal();
+      persist(next);
+    });
+    document.getElementById('search').addEventListener('input', function(e){
+      query = e.target.value;
+      renderGrid();
+    });
+    document.getElementById('f-section').addEventListener('change', function(e){
+      document.getElementById('newSectionField').hidden = (e.target.value !== '__new__');
+    });
+    document.getElementById('addForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      var urlEl = document.getElementById('f-url');
+      var titleEl = document.getElementById('f-title');
+      var url = urlEl.value.trim();
+      var title = titleEl.value.trim();
+      var note = document.getElementById('f-note').value.trim();
+      var secSel = document.getElementById('f-section').value;
+      var newSectionEl = document.getElementById('f-newsection');
+
+      var ok = true;
+      document.getElementById('err-url').hidden = true;
+      document.getElementById('err-title').hidden = true;
+      document.getElementById('err-newsection').hidden = true;
+
+      if(!url){ document.getElementById('err-url').hidden = false; ok = false; }
+      if(!title){ document.getElementById('err-title').hidden = false; ok = false; }
+      var newName = '';
+      if(secSel === '__new__'){
+        newName = newSectionEl.value.trim();
+        if(!newName){ document.getElementById('err-newsection').hidden = false; ok = false; }
+      }
+      if(!ok) return;
+
+      var sections = state.sections.slice();
+      var sectionId = secSel;
+      if(secSel === '__new__'){
+        sectionId = uid();
+        sections = sections.concat([{id:sectionId, name:newName}]);
+      }
+      var items = state.items.concat([{
+        id: uid(), sectionId: sectionId, url: url, title: title, note: note, example:false, addedAt: Date.now()
+      }]);
+      activeSection = sectionId;
+      closeModal();
+      persist(Object.assign({}, state, {sections:sections, items:items}));
+    });
+
+    renderAll();
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body></html>
