@@ -149,8 +149,19 @@ h1,h2,h3{font-family:"Archivo",system-ui,sans-serif; margin:0; text-wrap:balance
 .chip.sub{ color:var(--ink-soft); }
 .chip-row{display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
 .card h3{font-size:15.5px; font-weight:700; line-height:1.3;}
-.card .note{font-size:13px; color:var(--ink-soft); line-height:1.45; flex:1;}
-.card-actions{display:flex; justify-content:space-between; align-items:center; margin-top:2px;}
+.card .note{font-size:13px; color:var(--ink-soft); line-height:1.45; flex:1; margin:0;}
+.card .note.clamped{
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+}
+.note-toggle{
+  background:none; border:none; cursor:pointer; padding:0; margin-top:-4px; align-self:flex-start;
+  font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600; letter-spacing:.03em;
+  color:var(--teal);
+}
+.note-toggle:hover{text-decoration:underline;}
+.card-actions{display:flex; justify-content:space-between; align-items:center; margin-top:2px; gap:8px;}
+.action-btns{display:flex; align-items:center; gap:2px;}
+.edit-btn:hover{color:var(--teal); background:var(--paper-2);}
 .open-link{
   font-family:"Archivo",sans-serif; font-weight:700; font-size:13px; color:var(--accent);
   text-decoration:none; display:inline-flex; align-items:center; gap:5px;
@@ -528,6 +539,7 @@ footer.note{
 
   var pendingDeleteId = null;
   var pendingThumb = null;
+  var editingId = null;
 
   function readAndCompressImage(file, callback){
     var reader = new FileReader();
@@ -558,7 +570,7 @@ footer.note{
       wrap.innerHTML = '<div class="empty"><p>'+(ready ? 'No hay reels acá todavía.' : 'Conectando con Firebase…')+'</p>'+
         (ready ? '<button class="btn" id="emptyAdd" type="button">+ Agregar el primero</button>' : '')+'</div>';
       var eb = document.getElementById('emptyAdd');
-      if(eb) eb.addEventListener('click', openModal);
+      if(eb) eb.addEventListener('click', function(){ openModal(); });
       return;
     }
     var html = '<div class="grid">';
@@ -572,7 +584,10 @@ footer.note{
           '</span>';
       } else {
         actions = '<a class="open-link" href="'+escapeHtml(it.url)+'" target="_blank" rel="noopener noreferrer">Ver reel ↗</a>'+
-          '<button class="del-btn" data-del="'+it.id+'" type="button" aria-label="Borrar">✕</button>';
+          '<span class="action-btns">'+
+          '<button class="del-btn edit-btn" data-edit="'+it.id+'" type="button" aria-label="Editar">✎</button>'+
+          '<button class="del-btn" data-del="'+it.id+'" type="button" aria-label="Borrar">✕</button>'+
+          '</span>';
       }
       var thumbHtml = it.thumbnail
         ? '<div class="thumb"><img src="'+it.thumbnail+'" alt="" loading="lazy"></div>'
@@ -586,11 +601,38 @@ footer.note{
         (it.example ? '<span class="example-badge">EJEMPLO</span>' : '')+
         '</div>'+
         '<h3>'+escapeHtml(it.title)+'</h3>'+
-        (it.note ? '<p class="note">'+escapeHtml(it.note)+'</p>' : '<p class="note"></p>')+
+        (it.note
+          ? '<p class="note clamped">'+escapeHtml(it.note)+'</p><button class="note-toggle" data-notetoggle="'+it.id+'" type="button" hidden>Ver más</button>'
+          : '<p class="note"></p>')+
         '<div class="card-actions">'+actions+'</div></article>';
     });
     html += '</div>';
     wrap.innerHTML = html;
+    wrap.querySelectorAll('.note.clamped').forEach(function(p){
+      var btn = p.nextElementSibling;
+      if(btn && btn.hasAttribute('data-notetoggle')){
+        btn.hidden = !(p.scrollHeight > p.clientHeight + 1);
+      }
+    });
+    wrap.querySelectorAll('[data-notetoggle]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var p = btn.previousElementSibling;
+        if(p.classList.contains('clamped')){
+          p.classList.remove('clamped');
+          btn.textContent = 'Ver menos';
+        } else {
+          p.classList.add('clamped');
+          btn.textContent = 'Ver más';
+        }
+      });
+    });
+    wrap.querySelectorAll('[data-edit]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-edit');
+        var item = state.items.find(function(it){return it.id===id;});
+        if(item) openModal(item);
+      });
+    });
     wrap.querySelectorAll('[data-del]').forEach(function(btn){
       btn.addEventListener('click', function(){
         pendingDeleteId = btn.getAttribute('data-del');
@@ -670,7 +712,9 @@ footer.note{
     }
   }
 
-  function openModal(){
+  function openModal(editItem){
+    editingId = editItem ? editItem.id : null;
+    document.getElementById('addTitle').textContent = editItem ? 'Editar reel' : 'Agregar reel';
     renderSectionSelect();
     document.getElementById('newSectionField').hidden = true;
     document.getElementById('newSubsectionField').hidden = true;
@@ -680,14 +724,24 @@ footer.note{
     document.getElementById('err-newsection').hidden = true;
     document.getElementById('err-newsubsection').hidden = true;
     document.getElementById('err-thumb').hidden = true;
-    setThumbPreview(null);
+    setThumbPreview(editItem && editItem.thumbnail ? editItem.thumbnail : null);
     renderSectionSelect();
+    if(editItem){
+      document.getElementById('f-url').value = editItem.url;
+      document.getElementById('f-title').value = editItem.title;
+      document.getElementById('f-note').value = editItem.note || '';
+      document.getElementById('f-section').value = editItem.sectionId;
+    }
     renderSubsectionSelect(document.getElementById('f-section').value);
+    if(editItem && editItem.subsectionId){
+      document.getElementById('f-subsection').value = editItem.subsectionId;
+    }
     document.getElementById('addOverlay').hidden = false;
     document.getElementById('f-url').focus();
   }
   function closeModal(){
     document.getElementById('addOverlay').hidden = true;
+    editingId = null;
   }
 
   function persist(next){
@@ -699,7 +753,7 @@ footer.note{
   }
 
   function init(){
-    document.getElementById('btnAdd').addEventListener('click', openModal);
+    document.getElementById('btnAdd').addEventListener('click', function(){ openModal(); });
     document.getElementById('btnCancel').addEventListener('click', closeModal);
     document.getElementById('addOverlay').addEventListener('click', function(e){
       if(e.target.id === 'addOverlay') closeModal();
@@ -889,12 +943,26 @@ footer.note{
           subsectionId = subSel;
         }
       }
-      var newItem = {
-        id: uid(), sectionId: sectionId, url: url, title: title, note: note, example:false, addedAt: Date.now()
-      };
-      if(subsectionId){ newItem.subsectionId = subsectionId; }
-      if(pendingThumb){ newItem.thumbnail = pendingThumb; }
-      var items = state.items.concat([newItem]);
+      var items;
+      if(editingId){
+        items = state.items.map(function(it){
+          if(it.id !== editingId) return it;
+          var updated = {
+            id: it.id, sectionId: sectionId, url: url, title: title, note: note,
+            example: it.example, addedAt: it.addedAt
+          };
+          if(subsectionId){ updated.subsectionId = subsectionId; }
+          if(pendingThumb){ updated.thumbnail = pendingThumb; }
+          return updated;
+        });
+      } else {
+        var newItem = {
+          id: uid(), sectionId: sectionId, url: url, title: title, note: note, example:false, addedAt: Date.now()
+        };
+        if(subsectionId){ newItem.subsectionId = subsectionId; }
+        if(pendingThumb){ newItem.thumbnail = pendingThumb; }
+        items = state.items.concat([newItem]);
+      }
       activeSection = sectionId;
       activeSubsection = subsectionId || "__all__";
       closeModal();
