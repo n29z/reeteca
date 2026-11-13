@@ -121,6 +121,12 @@ h1,h2,h3{font-family:"Archivo",system-ui,sans-serif; margin:0; text-wrap:balance
 .subtabs .tab{ font-size:11px; padding:6px 11px; border-color:transparent; background:var(--paper-2); }
 .subtabs .tab[aria-selected="true"]{ background:var(--teal); color:#fff; }
 .subtabs .tab.add-tab{ background:transparent; border-color:var(--line); }
+.tab-rename-input{
+  font-family:"IBM Plex Mono",monospace; font-size:12.5px; font-weight:600;
+  padding:8px 13px; border-radius:999px; border:1.5px solid var(--teal);
+  background:var(--card); color:var(--ink); outline:none; min-width:60px;
+}
+.subtabs .tab-rename-input{ font-size:11px; padding:6px 11px; }
 
 .grid{
   display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:14px;
@@ -465,6 +471,28 @@ footer.note{
     });
   }
 
+  function startInlineRename(btn, currentName, onCommit){
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentName;
+    input.className = 'tab-rename-input';
+    btn.replaceWith(input);
+    input.focus();
+    input.select();
+    var done = false;
+    function commit(){
+      if(done) return;
+      done = true;
+      var val = input.value.trim();
+      onCommit(val && val !== currentName ? val : null);
+    }
+    input.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){ e.preventDefault(); commit(); }
+      if(e.key === 'Escape'){ e.preventDefault(); done = true; onCommit(null); }
+    });
+    input.addEventListener('blur', function(){ commit(); });
+  }
+
   function renderTabs(){
     var tabs = document.getElementById('tabs');
     var all = state.items.length;
@@ -477,11 +505,29 @@ footer.note{
     html += '<button class="tab add-tab" id="tabAddSection" type="button">+ Sección</button>';
     tabs.innerHTML = html;
     tabs.querySelectorAll('.tab[data-section]').forEach(function(btn){
+      var secId = btn.getAttribute('data-section');
       btn.addEventListener('click', function(){
-        activeSection = btn.getAttribute('data-section');
+        activeSection = secId;
         activeSubsection = "__all__";
         renderAll();
       });
+      if(secId !== '__all__'){
+        btn.addEventListener('dblclick', function(e){
+          e.preventDefault();
+          var sec = state.sections.find(function(s){return s.id===secId;});
+          if(!sec) return;
+          startInlineRename(btn, sec.name, function(newName){
+            if(newName){
+              var sections = state.sections.map(function(s){
+                return s.id===secId ? Object.assign({}, s, {name:newName}) : s;
+              });
+              persist(Object.assign({}, state, {sections:sections}));
+            } else {
+              renderAll();
+            }
+          });
+        });
+      }
     });
     var addSectionBtn = document.getElementById('tabAddSection');
     if(addSectionBtn){ addSectionBtn.addEventListener('click', openSectionModal); }
@@ -507,11 +553,35 @@ footer.note{
     nav.innerHTML = html;
     nav.hidden = false;
     nav.querySelectorAll('.tab[data-subsection]').forEach(function(btn){
+      var subId = btn.getAttribute('data-subsection');
       btn.addEventListener('click', function(){
-        activeSubsection = btn.getAttribute('data-subsection');
+        activeSubsection = subId;
         renderSubtabs();
         renderGrid();
       });
+      if(subId !== '__all__'){
+        btn.addEventListener('dblclick', function(e){
+          e.preventDefault();
+          var curSec = state.sections.find(function(s){return s.id===activeSection;});
+          var sub = curSec && (curSec.subsections || []).find(function(x){return x.id===subId;});
+          if(!sub) return;
+          startInlineRename(btn, sub.name, function(newName){
+            if(newName){
+              var sections = state.sections.map(function(s){
+                if(s.id !== activeSection) return s;
+                var subs = (s.subsections || []).map(function(x){
+                  return x.id===subId ? Object.assign({}, x, {name:newName}) : x;
+                });
+                return Object.assign({}, s, {subsections: subs});
+              });
+              persist(Object.assign({}, state, {sections:sections}));
+            } else {
+              renderSubtabs();
+              renderGrid();
+            }
+          });
+        });
+      }
     });
     var addSubBtn = document.getElementById('subAddTab');
     if(addSubBtn){ addSubBtn.addEventListener('click', openSubModal); }
