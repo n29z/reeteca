@@ -117,6 +117,10 @@ h1,h2,h3{font-family:"Archivo",system-ui,sans-serif; margin:0; text-wrap:balance
 .tab[aria-selected="true"]{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
 .tab .count{opacity:.6; margin-left:5px;}
 .tab.add-tab{ background:transparent; border-style:dashed; color:var(--teal); }
+.subtabs{ margin:-10px 0 16px; }
+.subtabs .tab{ font-size:11px; padding:6px 11px; border-color:transparent; background:var(--paper-2); }
+.subtabs .tab[aria-selected="true"]{ background:var(--teal); color:#fff; }
+.subtabs .tab.add-tab{ background:transparent; border-color:var(--line); }
 
 .grid{
   display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:14px;
@@ -142,6 +146,8 @@ h1,h2,h3{font-family:"Archivo",system-ui,sans-serif; margin:0; text-wrap:balance
   font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
   color:var(--teal); font-weight:600;
 }
+.chip.sub{ color:var(--ink-soft); }
+.chip-row{display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
 .card h3{font-size:15.5px; font-weight:700; line-height:1.3;}
 .card .note{font-size:13px; color:var(--ink-soft); line-height:1.45; flex:1;}
 .card-actions{display:flex; justify-content:space-between; align-items:center; margin-top:2px;}
@@ -235,6 +241,7 @@ footer.note{
   </div>
 
   <nav class="tabs" id="tabs" aria-label="Secciones"></nav>
+  <nav class="tabs subtabs" id="subtabs" aria-label="Subsecciones" hidden></nav>
   <div id="gridWrap"></div>
 
   <footer class="note" id="syncNote" hidden></footer>
@@ -273,6 +280,15 @@ footer.note{
         <input id="f-newsection" type="text" placeholder="Ej: Color grading">
         <span class="field-error" id="err-newsection" hidden>Ponele un nombre a la sección.</span>
       </div>
+      <div class="field" id="subsectionFieldWrap" hidden>
+        <label for="f-subsection">Subsección (opcional)</label>
+        <select id="f-subsection"></select>
+      </div>
+      <div class="field" id="newSubsectionField" hidden>
+        <label for="f-newsubsection">Nombre de la nueva subsección</label>
+        <input id="f-newsubsection" type="text" placeholder="Ej: Transiciones">
+        <span class="field-error" id="err-newsubsection" hidden>Ponele un nombre a la subsección.</span>
+      </div>
       <div class="field">
         <label for="f-note">Nota (opcional)</label>
         <textarea id="f-note" placeholder="Por qué te sirve, qué técnica usa..."></textarea>
@@ -296,6 +312,23 @@ footer.note{
       </div>
       <div class="modal-actions">
         <button type="button" class="btn ghost" id="btnCancelSection">Cancelar</button>
+        <button type="submit" class="btn">Crear</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="subOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="subTitle">
+    <h2 id="subTitle">Nueva subsección</h2>
+    <form id="subForm">
+      <div class="field">
+        <label for="f-subonly">Nombre de la subsección</label>
+        <input id="f-subonly" type="text" placeholder="Ej: Transiciones">
+        <span class="field-error" id="err-subonly" hidden>Ponele un nombre a la subsección.</span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btnCancelSub">Cancelar</button>
         <button type="submit" class="btn">Crear</button>
       </div>
     </form>
@@ -343,14 +376,14 @@ footer.note{
   function defaultState(){
     return {
       sections: [
-        {id:"contenido", name:"Creación de contenido"},
-        {id:"edicion", name:"Edición de video"},
-        {id:"tips", name:"Tips de diseño"},
-        {id:"tutoriales", name:"Tutoriales"},
-        {id:"tipografia", name:"Tipografía"}
+        {id:"contenido", name:"Creación de contenido", subsections:[]},
+        {id:"edicion", name:"Edición de video", subsections:[{id:"edicion-transiciones", name:"Transiciones"}]},
+        {id:"tips", name:"Tips de diseño", subsections:[]},
+        {id:"tutoriales", name:"Tutoriales", subsections:[]},
+        {id:"tipografia", name:"Tipografía", subsections:[]}
       ],
       items: [
-        {id:"ex1", sectionId:"edicion", url:"https://www.instagram.com/reels/", title:"Corte a ritmo de música (ejemplo)", note:"Técnica de corte seco en cada golpe de batería, útil para reels de producto.", example:true, addedAt:0},
+        {id:"ex1", sectionId:"edicion", subsectionId:"edicion-transiciones", url:"https://www.instagram.com/reels/", title:"Corte a ritmo de música (ejemplo)", note:"Técnica de corte seco en cada golpe de batería, útil para reels de producto.", example:true, addedAt:0},
         {id:"ex2", sectionId:"tipografia", url:"https://www.instagram.com/reels/", title:"Pairing serif + sans (ejemplo)", note:"Cómo combinar una tipografía editorial con una grotesca para jerarquía.", example:true, addedAt:0}
       ]
     };
@@ -358,6 +391,7 @@ footer.note{
 
   var state = { sections: [], items: [] };
   var activeSection = "__all__";
+  var activeSubsection = "__all__";
   var query = "";
   var ready = false;
   var applyingRemote = false;
@@ -401,12 +435,21 @@ footer.note{
     return s ? s.name : "Sin sección";
   }
 
+  function subsectionName(sectionId, subsectionId){
+    if(!subsectionId) return "";
+    var s = state.sections.find(function(x){return x.id===sectionId;});
+    if(!s || !s.subsections) return "";
+    var sub = s.subsections.find(function(x){return x.id===subsectionId;});
+    return sub ? sub.name : "";
+  }
+
   function filteredItems(){
     var q = query.trim().toLowerCase();
     return state.items.filter(function(it){
       if(activeSection !== "__all__" && it.sectionId !== activeSection) return false;
+      if(activeSection !== "__all__" && activeSubsection !== "__all__" && it.subsectionId !== activeSubsection) return false;
       if(!q) return true;
-      var hay = (it.title+" "+(it.note||"")+" "+sectionName(it.sectionId)).toLowerCase();
+      var hay = (it.title+" "+(it.note||"")+" "+sectionName(it.sectionId)+" "+subsectionName(it.sectionId, it.subsectionId)).toLowerCase();
       return hay.indexOf(q) !== -1;
     });
   }
@@ -425,11 +468,52 @@ footer.note{
     tabs.querySelectorAll('.tab[data-section]').forEach(function(btn){
       btn.addEventListener('click', function(){
         activeSection = btn.getAttribute('data-section');
+        activeSubsection = "__all__";
         renderAll();
       });
     });
     var addSectionBtn = document.getElementById('tabAddSection');
     if(addSectionBtn){ addSectionBtn.addEventListener('click', openSectionModal); }
+  }
+
+  function renderSubtabs(){
+    var nav = document.getElementById('subtabs');
+    var sec = activeSection !== "__all__" ? state.sections.find(function(s){return s.id===activeSection;}) : null;
+    if(!sec){
+      nav.hidden = true;
+      nav.innerHTML = '';
+      return;
+    }
+    var subs = sec.subsections || [];
+    var itemsInSection = state.items.filter(function(it){return it.sectionId===activeSection;});
+    var html = '<button class="tab" role="tab" aria-selected="'+(activeSubsection==="__all__")+'" data-subsection="__all__">Todas <span class="count">'+itemsInSection.length+'</span></button>';
+    subs.forEach(function(sub){
+      var count = itemsInSection.filter(function(it){return it.subsectionId===sub.id;}).length;
+      html += '<button class="tab" role="tab" aria-selected="'+(activeSubsection===sub.id)+'" data-subsection="'+sub.id+'">'+
+        escapeHtml(sub.name)+' <span class="count">'+count+'</span></button>';
+    });
+    html += '<button class="tab add-tab" id="subAddTab" type="button">+ Subsección</button>';
+    nav.innerHTML = html;
+    nav.hidden = false;
+    nav.querySelectorAll('.tab[data-subsection]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        activeSubsection = btn.getAttribute('data-subsection');
+        renderSubtabs();
+        renderGrid();
+      });
+    });
+    var addSubBtn = document.getElementById('subAddTab');
+    if(addSubBtn){ addSubBtn.addEventListener('click', openSubModal); }
+  }
+
+  function openSubModal(){
+    document.getElementById('subForm').reset();
+    document.getElementById('err-subonly').hidden = true;
+    document.getElementById('subOverlay').hidden = false;
+    document.getElementById('f-subonly').focus();
+  }
+  function closeSubModal(){
+    document.getElementById('subOverlay').hidden = true;
   }
 
   function openSectionModal(){
@@ -496,7 +580,9 @@ footer.note{
       html += '<article class="card">'+
         thumbHtml+
         '<div class="frameline"></div>'+
-        '<div class="card-top"><span class="chip">'+escapeHtml(sectionName(it.sectionId))+'</span>'+
+        '<div class="card-top"><span class="chip-row"><span class="chip">'+escapeHtml(sectionName(it.sectionId))+'</span>'+
+        (it.subsectionId ? '<span class="chip sub">'+escapeHtml(subsectionName(it.sectionId, it.subsectionId))+'</span>' : '')+
+        '</span>'+
         (it.example ? '<span class="example-badge">EJEMPLO</span>' : '')+
         '</div>'+
         '<h3>'+escapeHtml(it.title)+'</h3>'+
@@ -540,8 +626,29 @@ footer.note{
     if(activeSection !== "__all__"){ sel.value = activeSection; }
   }
 
+  function renderSubsectionSelect(sectionId){
+    var wrap = document.getElementById('subsectionFieldWrap');
+    var sel = document.getElementById('f-subsection');
+    var sec = sectionId ? state.sections.find(function(s){return s.id===sectionId;}) : null;
+    if(!sec){
+      wrap.hidden = true;
+      sel.innerHTML = '';
+      return;
+    }
+    var subs = sec.subsections || [];
+    var html = '<option value="">Sin subsección</option>';
+    subs.forEach(function(sub){
+      html += '<option value="'+sub.id+'">'+escapeHtml(sub.name)+'</option>';
+    });
+    html += '<option value="__new__">+ Nueva subsección…</option>';
+    sel.innerHTML = html;
+    wrap.hidden = false;
+    if(activeSection === sectionId && activeSubsection !== "__all__"){ sel.value = activeSubsection; }
+  }
+
   function renderAll(){
     renderTabs();
+    renderSubtabs();
     renderGrid();
   }
 
@@ -566,13 +673,16 @@ footer.note{
   function openModal(){
     renderSectionSelect();
     document.getElementById('newSectionField').hidden = true;
+    document.getElementById('newSubsectionField').hidden = true;
     document.getElementById('addForm').reset();
     document.getElementById('err-url').hidden = true;
     document.getElementById('err-title').hidden = true;
     document.getElementById('err-newsection').hidden = true;
+    document.getElementById('err-newsubsection').hidden = true;
     document.getElementById('err-thumb').hidden = true;
     setThumbPreview(null);
     renderSectionSelect();
+    renderSubsectionSelect(document.getElementById('f-section').value);
     document.getElementById('addOverlay').hidden = false;
     document.getElementById('f-url').focus();
   }
@@ -598,6 +708,28 @@ footer.note{
     document.getElementById('sectionOverlay').addEventListener('click', function(e){
       if(e.target.id === 'sectionOverlay') closeSectionModal();
     });
+    document.getElementById('btnCancelSub').addEventListener('click', closeSubModal);
+    document.getElementById('subOverlay').addEventListener('click', function(e){
+      if(e.target.id === 'subOverlay') closeSubModal();
+    });
+    document.getElementById('subForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      var name = document.getElementById('f-subonly').value.trim();
+      if(!name){
+        document.getElementById('err-subonly').hidden = false;
+        return;
+      }
+      document.getElementById('err-subonly').hidden = true;
+      var subId = uid();
+      var sections = state.sections.map(function(s){
+        if(s.id !== activeSection) return s;
+        var subs = (s.subsections || []).concat([{id:subId, name:name}]);
+        return Object.assign({}, s, {subsections: subs});
+      });
+      activeSubsection = subId;
+      closeSubModal();
+      persist(Object.assign({}, state, {sections:sections}));
+    });
     document.getElementById('sectionForm').addEventListener('submit', function(e){
       e.preventDefault();
       var name = document.getElementById('f-sectiononly').value.trim();
@@ -619,7 +751,14 @@ footer.note{
       renderGrid();
     });
     document.getElementById('f-section').addEventListener('change', function(e){
-      document.getElementById('newSectionField').hidden = (e.target.value !== '__new__');
+      var isNew = (e.target.value === '__new__');
+      document.getElementById('newSectionField').hidden = !isNew;
+      document.getElementById('newSubsectionField').hidden = true;
+      document.getElementById('err-newsubsection').hidden = true;
+      renderSubsectionSelect(isNew ? null : e.target.value);
+    });
+    document.getElementById('f-subsection').addEventListener('change', function(e){
+      document.getElementById('newSubsectionField').hidden = (e.target.value !== '__new__');
     });
     function handleThumbFile(file){
       var err = document.getElementById('err-thumb');
@@ -708,11 +847,14 @@ footer.note{
       var note = document.getElementById('f-note').value.trim();
       var secSel = document.getElementById('f-section').value;
       var newSectionEl = document.getElementById('f-newsection');
+      var subSel = document.getElementById('f-subsection').value;
+      var newSubsectionEl = document.getElementById('f-newsubsection');
 
       var ok = true;
       document.getElementById('err-url').hidden = true;
       document.getElementById('err-title').hidden = true;
       document.getElementById('err-newsection').hidden = true;
+      document.getElementById('err-newsubsection').hidden = true;
 
       if(!url){ document.getElementById('err-url').hidden = false; ok = false; }
       if(!title){ document.getElementById('err-title').hidden = false; ok = false; }
@@ -721,20 +863,40 @@ footer.note{
         newName = newSectionEl.value.trim();
         if(!newName){ document.getElementById('err-newsection').hidden = false; ok = false; }
       }
+      var newSubName = '';
+      if(secSel !== '__new__' && subSel === '__new__'){
+        newSubName = newSubsectionEl.value.trim();
+        if(!newSubName){ document.getElementById('err-newsubsection').hidden = false; ok = false; }
+      }
       if(!ok) return;
 
       var sections = state.sections.slice();
       var sectionId = secSel;
       if(secSel === '__new__'){
         sectionId = uid();
-        sections = sections.concat([{id:sectionId, name:newName}]);
+        sections = sections.concat([{id:sectionId, name:newName, subsections:[]}]);
+      }
+      var subsectionId = '';
+      if(secSel !== '__new__'){
+        if(subSel === '__new__'){
+          subsectionId = uid();
+          sections = sections.map(function(s){
+            if(s.id !== sectionId) return s;
+            var subs = (s.subsections || []).concat([{id:subsectionId, name:newSubName}]);
+            return Object.assign({}, s, {subsections: subs});
+          });
+        } else if(subSel){
+          subsectionId = subSel;
+        }
       }
       var newItem = {
         id: uid(), sectionId: sectionId, url: url, title: title, note: note, example:false, addedAt: Date.now()
       };
+      if(subsectionId){ newItem.subsectionId = subsectionId; }
       if(pendingThumb){ newItem.thumbnail = pendingThumb; }
       var items = state.items.concat([newItem]);
       activeSection = sectionId;
+      activeSubsection = subsectionId || "__all__";
       closeModal();
       persist(Object.assign({}, state, {sections:sections, items:items}));
     });
