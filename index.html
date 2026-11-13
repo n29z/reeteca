@@ -121,12 +121,17 @@ h1,h2,h3{font-family:"Archivo",system-ui,sans-serif; margin:0; text-wrap:balance
 .subtabs .tab{ font-size:11px; padding:6px 11px; border-color:transparent; background:var(--paper-2); }
 .subtabs .tab[aria-selected="true"]{ background:var(--teal); color:#fff; }
 .subtabs .tab.add-tab{ background:transparent; border-color:var(--line); }
-.tab-rename-input{
-  font-family:"IBM Plex Mono",monospace; font-size:12.5px; font-weight:600;
-  padding:8px 13px; border-radius:999px; border:1.5px solid var(--teal);
-  background:var(--card); color:var(--ink); outline:none; min-width:60px;
+.dot{width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; flex:0 0 auto; vertical-align:middle;}
+.color-row{display:flex; align-items:center; gap:10px;}
+.color-row input[type="color"]{
+  width:44px; height:36px; padding:2px; border-radius:8px; border:1px solid var(--line);
+  background:var(--card); cursor:pointer;
 }
-.subtabs .tab-rename-input{ font-size:11px; padding:6px 11px; }
+.color-dot-preview{width:16px; height:16px; border-radius:50%; border:1px solid var(--line); display:inline-block;}
+.btn.ghost.danger{color:var(--accent); border-color:var(--accent);}
+.btn.ghost.danger:hover{background:var(--accent); color:#fff;}
+.edit-delete-zone{margin:2px 0 10px;}
+.delete-confirm-row{font-size:13px; color:var(--ink-soft); font-weight:600; line-height:1.4;}
 
 .grid{
   display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:14px;
@@ -352,6 +357,30 @@ footer.note{
   </div>
 </div>
 
+<div class="overlay" id="sectionEditOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sectionEditTitle">
+    <h2 id="sectionEditTitle">Editar sección</h2>
+    <form id="sectionEditForm">
+      <div class="field">
+        <label for="f-sectionedit-name">Nombre</label>
+        <input id="f-sectionedit-name" type="text">
+        <span class="field-error" id="err-sectionedit-name" hidden>Ponele un nombre.</span>
+      </div>
+      <div class="field" id="sectionEditColorWrap">
+        <label for="f-sectionedit-color">Color</label>
+        <div class="color-row">
+          <input id="f-sectionedit-color" type="color" value="#12807D">
+        </div>
+      </div>
+      <div class="edit-delete-zone" id="sectionEditDeleteZone"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btnCancelSectionEdit">Cancelar</button>
+        <button type="submit" class="btn">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 (function(){
   // =======================================================================
@@ -471,36 +500,15 @@ footer.note{
     });
   }
 
-  function startInlineRename(btn, currentName, onCommit){
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.value = currentName;
-    input.className = 'tab-rename-input';
-    btn.replaceWith(input);
-    input.focus();
-    input.select();
-    var done = false;
-    function commit(){
-      if(done) return;
-      done = true;
-      var val = input.value.trim();
-      onCommit(val && val !== currentName ? val : null);
-    }
-    input.addEventListener('keydown', function(e){
-      if(e.key === 'Enter'){ e.preventDefault(); commit(); }
-      if(e.key === 'Escape'){ e.preventDefault(); done = true; onCommit(null); }
-    });
-    input.addEventListener('blur', function(){ commit(); });
-  }
-
   function renderTabs(){
     var tabs = document.getElementById('tabs');
     var all = state.items.length;
     var html = '<button class="tab" role="tab" aria-selected="'+(activeSection==="__all__")+'" data-section="__all__">Todos <span class="count">'+all+'</span></button>';
     state.sections.forEach(function(s){
       var count = state.items.filter(function(it){return it.sectionId===s.id;}).length;
+      var dot = '<span class="dot" style="background:'+(s.color ? escapeHtml(s.color) : 'var(--teal)')+'"></span>';
       html += '<button class="tab" role="tab" aria-selected="'+(activeSection===s.id)+'" data-section="'+s.id+'">'+
-        escapeHtml(s.name)+' <span class="count">'+count+'</span></button>';
+        dot+escapeHtml(s.name)+' <span class="count">'+count+'</span></button>';
     });
     html += '<button class="tab add-tab" id="tabAddSection" type="button">+ Sección</button>';
     tabs.innerHTML = html;
@@ -514,18 +522,7 @@ footer.note{
       if(secId !== '__all__'){
         btn.addEventListener('dblclick', function(e){
           e.preventDefault();
-          var sec = state.sections.find(function(s){return s.id===secId;});
-          if(!sec) return;
-          startInlineRename(btn, sec.name, function(newName){
-            if(newName){
-              var sections = state.sections.map(function(s){
-                return s.id===secId ? Object.assign({}, s, {name:newName}) : s;
-              });
-              persist(Object.assign({}, state, {sections:sections}));
-            } else {
-              renderAll();
-            }
-          });
+          openSectionEditModal('section', secId);
         });
       }
     });
@@ -562,24 +559,7 @@ footer.note{
       if(subId !== '__all__'){
         btn.addEventListener('dblclick', function(e){
           e.preventDefault();
-          var curSec = state.sections.find(function(s){return s.id===activeSection;});
-          var sub = curSec && (curSec.subsections || []).find(function(x){return x.id===subId;});
-          if(!sub) return;
-          startInlineRename(btn, sub.name, function(newName){
-            if(newName){
-              var sections = state.sections.map(function(s){
-                if(s.id !== activeSection) return s;
-                var subs = (s.subsections || []).map(function(x){
-                  return x.id===subId ? Object.assign({}, x, {name:newName}) : x;
-                });
-                return Object.assign({}, s, {subsections: subs});
-              });
-              persist(Object.assign({}, state, {sections:sections}));
-            } else {
-              renderSubtabs();
-              renderGrid();
-            }
-          });
+          openSectionEditModal('subsection', subId);
         });
       }
     });
@@ -605,6 +585,79 @@ footer.note{
   }
   function closeSectionModal(){
     document.getElementById('sectionOverlay').hidden = true;
+  }
+
+  var editingTabKind = null;
+  var editingTabId = null;
+
+  function resetDeleteZone(){
+    var zone = document.getElementById('sectionEditDeleteZone');
+    var label = editingTabKind === 'section' ? 'sección' : 'subsección';
+    zone.innerHTML = '<button type="button" class="btn ghost danger" id="btnSectionDelete">Eliminar '+label+'</button>';
+    document.getElementById('btnSectionDelete').addEventListener('click', function(){
+      var count = editingTabKind === 'section'
+        ? state.items.filter(function(it){return it.sectionId===editingTabId;}).length
+        : state.items.filter(function(it){return it.sectionId===activeSection && it.subsectionId===editingTabId;}).length;
+      var warn = count > 0 ? ' Los '+count+' reel(s) que tiene no se borran, solo quedan sin '+label+'.' : '';
+      zone.innerHTML = '<div class="delete-confirm-row">¿Eliminar esta '+label+'?'+warn+'</div>'+
+        '<div class="confirm-btns" style="margin-top:8px;">'+
+        '<button type="button" class="btn ghost danger" id="btnSectionDeleteYes">Sí, eliminar</button>'+
+        '<button type="button" class="btn ghost" id="btnSectionDeleteNo">Cancelar</button>'+
+        '</div>';
+      document.getElementById('btnSectionDeleteYes').addEventListener('click', performTabDelete);
+      document.getElementById('btnSectionDeleteNo').addEventListener('click', resetDeleteZone);
+    });
+  }
+
+  function performTabDelete(){
+    var sections;
+    if(editingTabKind === 'section'){
+      sections = state.sections.filter(function(s){return s.id!==editingTabId;});
+      if(activeSection === editingTabId){ activeSection = "__all__"; activeSubsection = "__all__"; }
+    } else {
+      sections = state.sections.map(function(s){
+        if(s.id !== activeSection) return s;
+        var subs = (s.subsections || []).filter(function(x){return x.id!==editingTabId;});
+        return Object.assign({}, s, {subsections: subs});
+      });
+      if(activeSubsection === editingTabId){ activeSubsection = "__all__"; }
+    }
+    closeSectionEditModal();
+    persist(Object.assign({}, state, {sections:sections}));
+  }
+
+  function openSectionEditModal(kind, id){
+    editingTabKind = kind;
+    editingTabId = id;
+    var colorWrap = document.getElementById('sectionEditColorWrap');
+    var title = document.getElementById('sectionEditTitle');
+    var nameInput = document.getElementById('f-sectionedit-name');
+    var colorInput = document.getElementById('f-sectionedit-color');
+    document.getElementById('err-sectionedit-name').hidden = true;
+    if(kind === 'section'){
+      var sec = state.sections.find(function(s){return s.id===id;});
+      if(!sec) return;
+      title.textContent = 'Editar sección';
+      nameInput.value = sec.name;
+      colorInput.value = sec.color || '#12807D';
+      colorWrap.hidden = false;
+    } else {
+      var parentSec = state.sections.find(function(s){return s.id===activeSection;});
+      var sub = parentSec && (parentSec.subsections || []).find(function(x){return x.id===id;});
+      if(!sub) return;
+      title.textContent = 'Editar subsección';
+      nameInput.value = sub.name;
+      colorWrap.hidden = true;
+    }
+    resetDeleteZone();
+    document.getElementById('sectionEditOverlay').hidden = false;
+    nameInput.focus();
+    nameInput.select();
+  }
+  function closeSectionEditModal(){
+    document.getElementById('sectionEditOverlay').hidden = true;
+    editingTabKind = null;
+    editingTabId = null;
   }
 
   var pendingDeleteId = null;
@@ -662,11 +715,12 @@ footer.note{
       var thumbHtml = it.thumbnail
         ? '<div class="thumb"><img src="'+it.thumbnail+'" alt="" loading="lazy"></div>'
         : '<div class="thumb placeholder">🎬</div>';
+      var subNm = subsectionName(it.sectionId, it.subsectionId);
       html += '<article class="card">'+
         thumbHtml+
         '<div class="frameline"></div>'+
         '<div class="card-top"><span class="chip-row"><span class="chip">'+escapeHtml(sectionName(it.sectionId))+'</span>'+
-        (it.subsectionId ? '<span class="chip sub">'+escapeHtml(subsectionName(it.sectionId, it.subsectionId))+'</span>' : '')+
+        (subNm ? '<span class="chip sub">'+escapeHtml(subNm)+'</span>' : '')+
         '</span>'+
         (it.example ? '<span class="example-badge">EJEMPLO</span>' : '')+
         '</div>'+
@@ -835,6 +889,36 @@ footer.note{
     document.getElementById('btnCancelSub').addEventListener('click', closeSubModal);
     document.getElementById('subOverlay').addEventListener('click', function(e){
       if(e.target.id === 'subOverlay') closeSubModal();
+    });
+    document.getElementById('btnCancelSectionEdit').addEventListener('click', closeSectionEditModal);
+    document.getElementById('sectionEditOverlay').addEventListener('click', function(e){
+      if(e.target.id === 'sectionEditOverlay') closeSectionEditModal();
+    });
+    document.getElementById('sectionEditForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      var name = document.getElementById('f-sectionedit-name').value.trim();
+      if(!name){
+        document.getElementById('err-sectionedit-name').hidden = false;
+        return;
+      }
+      document.getElementById('err-sectionedit-name').hidden = true;
+      var color = document.getElementById('f-sectionedit-color').value;
+      var sections;
+      if(editingTabKind === 'section'){
+        sections = state.sections.map(function(s){
+          return s.id===editingTabId ? Object.assign({}, s, {name:name, color:color}) : s;
+        });
+      } else {
+        sections = state.sections.map(function(s){
+          if(s.id !== activeSection) return s;
+          var subs = (s.subsections || []).map(function(x){
+            return x.id===editingTabId ? Object.assign({}, x, {name:name}) : x;
+          });
+          return Object.assign({}, s, {subsections: subs});
+        });
+      }
+      closeSectionEditModal();
+      persist(Object.assign({}, state, {sections:sections}));
     });
     document.getElementById('subForm').addEventListener('submit', function(e){
       e.preventDefault();
